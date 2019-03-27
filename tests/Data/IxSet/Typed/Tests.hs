@@ -62,78 +62,62 @@ fooCalcs :: Foo -> String
 fooCalcs (Foo s _) = s ++ "bar"
 
 instance Indexed FooX Int where
-  ixFun = One $ \case Foo1 _ i -> Just i; Foo2 i -> Just i
-  type DoesIxFunReturnAtMostOne FooX Int = 'AtMostOne
+  ixFun = AtMostOne $ \case Foo1 _ i -> Just i; Foo2 i -> Just i
 
 instance Indexed FooX String where
-  ixFun = One $ \case Foo1 s _ -> Just s; Foo2 _ -> Nothing
-  type DoesIxFunReturnAtMostOne FooX String = 'AtMostOne
+  ixFun = AtMostOne $ \case Foo1 s _ -> Just s; Foo2 _ -> Nothing
 
 type FooXs = IxSet '[Int, String] FooX
 
 instance Indexed BadlyIndexed String where
-  ixFun = One $ const Nothing
-  type DoesIxFunReturnAtMostOne BadlyIndexed String = 'AtMostOne
+  ixFun = AtMostOne $ const Nothing
 
 type BadlyIndexeds = IxSet '[String] BadlyIndexed
 
 instance Indexed MultiIndex String where
-  ixFun = One $ \case MultiIndex s _ _ _ _ -> Just s; MultiIndexSubset _ _ s -> Just s
-  type DoesIxFunReturnAtMostOne MultiIndex String = 'AtMostOne
+  ixFun = AtMostOne $ \case MultiIndex s _ _ _ _ -> Just s; MultiIndexSubset _ _ s -> Just s
 
 instance Indexed MultiIndex Int where
-  ixFun = More $ \case MultiIndex _ i _ m _ -> i : maybeToList m; MultiIndexSubset i _ _ -> [i]
-  type DoesIxFunReturnAtMostOne MultiIndex Int = 'NotNecessarilyAtMostOne
+  ixFun = NotNecessarilyAtMostOne $ \case MultiIndex _ i _ m _ -> i : maybeToList m; MultiIndexSubset i _ _ -> [i]
 
 instance Indexed MultiIndex Integer where
-  ixFun = One $ \case MultiIndex _ _ i _ _ -> Just i; _ -> Nothing
-  type DoesIxFunReturnAtMostOne MultiIndex Integer = 'AtMostOne
+  ixFun = AtMostOne $ \case MultiIndex _ _ i _ _ -> Just i; _ -> Nothing
 
 instance Indexed MultiIndex Bool where
-  ixFun = One $ \case MultiIndex _ _ _ _ (Left b) -> Just b; MultiIndexSubset _ b _ -> Just b; _ -> Nothing
-  type DoesIxFunReturnAtMostOne MultiIndex Bool = 'AtMostOne
+  ixFun = AtMostOne $ \case MultiIndex _ _ _ _ (Left b) -> Just b; MultiIndexSubset _ b _ -> Just b; _ -> Nothing
 
 instance Indexed MultiIndex Char where
-  ixFun = One $ \case MultiIndex _ _ _ _ (Right c) -> Just c; _ -> Nothing
-  type DoesIxFunReturnAtMostOne MultiIndex Char = 'AtMostOne
+  ixFun = AtMostOne $ \case MultiIndex _ _ _ _ (Right c) -> Just c; _ -> Nothing
 
 type MultiIndexed = IxSet '[String, Int, Integer, Bool, Char] MultiIndex
 
 instance Indexed Triple Int where
-  ixFun = More $ \(Triple x y z) -> [x, y, z]
-  type DoesIxFunReturnAtMostOne Triple Int = 'NotNecessarilyAtMostOne
+  ixFun = NotNecessarilyAtMostOne $ \(Triple x y z) -> [x, y, z]
 
 type Triples = IxSet '[Int] Triple
 
 instance Indexed Foo String where
-  ixFun = One $ \foo -> Just $ fooCalcs foo
-  type DoesIxFunReturnAtMostOne Foo String = 'AtMostOne
+  ixFun = AtMostOne $ \foo -> Just $ fooCalcs foo
 
 instance Indexed Foo Int where
-  ixFun = One $ \(Foo _ i) -> Just i
-  type DoesIxFunReturnAtMostOne Foo Int = 'AtMostOne
+  ixFun = AtMostOne $ \(Foo _ i) -> Just i
 
 type Foos = IxSet '[String, Int] Foo
 
 instance Indexed S Int where
-  ixFun = One $ \(S x) -> Just $ length x
-  type DoesIxFunReturnAtMostOne S Int = 'AtMostOne
+  ixFun = AtMostOne $ \(S x) -> Just $ length x
 
 instance Indexed J1 Int where
-  ixFun = One $ \(J1 i _) -> Just i
-  type DoesIxFunReturnAtMostOne J1 Int = 'AtMostOne
+  ixFun = AtMostOne $ \(J1 i _) -> Just i
 
 instance Indexed J1 String where
-  ixFun = One $ \(J1 _ s) -> Just s
-  type DoesIxFunReturnAtMostOne J1 String = 'AtMostOne
+  ixFun = AtMostOne $ \(J1 _ s) -> Just s
 
 instance Indexed J2 Int where
-  ixFun = One $ \(J2 i _ _) -> Just i
-  type DoesIxFunReturnAtMostOne J2 Int = 'AtMostOne
+  ixFun = AtMostOne $ \(J2 i _ _) -> Just i
 
 instance Indexed J2 String where
-  ixFun = One $ \(J2 _ s _) -> Just s
-  type DoesIxFunReturnAtMostOne J2 String = 'AtMostOne
+  ixFun = AtMostOne $ \(J2 _ s _) -> Just s
 
 type J1s = IxSet '[Int, String] J1
 

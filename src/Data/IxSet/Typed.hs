@@ -6,7 +6,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -116,7 +115,6 @@ module Data.IxSet.Typed
      Ix(),
      Indexed(..),
      ixFunList,
-     ReturnAtMostOne(..),
      IxFun(..),
      MkEmptyIxList(),
 
@@ -204,7 +202,6 @@ import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as MM
 import Data.Maybe (fromMaybe, maybeToList)
 import Data.Monoid (Monoid (mappend, mempty))
-import Data.Proxy
 import Data.SafeCopy (SafeCopy (..), contain, safeGet, safePut)
 import Data.Semigroup (Semigroup (..))
 import Data.Set (Set)
@@ -419,41 +416,22 @@ instance MkEmptyIxList '[] where
 instance MkEmptyIxList ixs => MkEmptyIxList (ix ': ixs) where
   mkEmptyIxList = (Ix Map.empty) ::: mkEmptyIxList
 
--- | A type-level annotation for the user to specify whether a particular
--- 'ixFun' function in fact returns at most one index.
-data ReturnAtMostOne = AtMostOne | NotNecessarilyAtMostOne
-
-type family MaybeOrList (a :: ReturnAtMostOne) :: * -> * where
-  MaybeOrList 'AtMostOne = Maybe
-  MaybeOrList 'NotNecessarilyAtMostOne = []
-
--- | A GADT to wrap the index extraction function. The function has a different
--- type depending on the result of 'DoesIxFunReturnAtMostOne'.
-data IxFun a ix where
-  One :: (DoesIxFunReturnAtMostOne a ix ~ 'AtMostOne) => (a -> Maybe ix) -> IxFun a ix
-  More :: (DoesIxFunReturnAtMostOne a ix ~ 'NotNecessarilyAtMostOne) => (a -> [ix]) -> IxFun a ix
+-- | A data type to wrap the index extraction function. The function has a different
+-- type depending on the constructor.
+data IxFun a ix
+  = AtMostOne (a -> Maybe ix)
+  | NotNecessarilyAtMostOne (a -> [ix])
 
 -- | An 'Indexed' class asserts that it is possible to extract indices of type
 -- @ix@ from a type @a@. Provided function should return a list of indices where
 -- the value should be found. There are no predefined instances for 'Indexed'.
-class ReflectIxFunAnnotation (DoesIxFunReturnAtMostOne a ix) => Indexed a ix where
+class Indexed a ix where
   ixFun :: IxFun a ix
-
-  type DoesIxFunReturnAtMostOne a ix :: ReturnAtMostOne
-
-class ReflectIxFunAnnotation (a :: ReturnAtMostOne) where
-  reflectAnnotation :: Proxy (a :: ReturnAtMostOne) -> ReturnAtMostOne
-
-instance ReflectIxFunAnnotation 'AtMostOne where
-  reflectAnnotation _ = AtMostOne
-
-instance ReflectIxFunAnnotation 'NotNecessarilyAtMostOne where
-  reflectAnnotation _ = NotNecessarilyAtMostOne
 
 ixFunList :: forall a ix . Indexed a ix => a -> [ix]
 ixFunList a = case ixFun @a @ix of
-  One f -> maybeToList (f a)
-  More f -> f a
+  AtMostOne f -> maybeToList (f a)
+  NotNecessarilyAtMostOne f -> f a
 
 --------------------------------------------------------------------------
 -- Modification of 'IxSet's
@@ -524,9 +502,9 @@ fromMapOfSets partialindex =
 
     -- Update function for the index corresponding to partialindex.
     updateh :: Indexed a ix => Ix ix a -> Ix ix a
-    updateh = case reflectAnnotation (Proxy :: Proxy (DoesIxFunReturnAtMostOne a ix)) of
-      AtMostOne -> updatehSimple
-      NotNecessarilyAtMostOne -> updatehFull
+    updateh = case ixFun @a @ix of
+      AtMostOne _ -> updatehSimple
+      NotNecessarilyAtMostOne _ -> updatehFull
 
     updatehSimple :: Ix ix a -> Ix ix a
     updatehSimple (Ix _) = Ix partialindex
@@ -869,9 +847,7 @@ getOrd2 inclt inceq incgt v (IxSet _ ixs) = f (access ixs)
 newtype Joined a b = Joined (a, b) deriving (Show, Read, Eq, Ord)
 
 instance (Indexed a ix, Indexed b ix) => Indexed (Joined a b) ix where
-  ixFun = More (\(Joined (a,b)) -> ixFunList a <> ixFunList b)
-
-  type DoesIxFunReturnAtMostOne (Joined a b) ix = 'NotNecessarilyAtMostOne
+  ixFun = NotNecessarilyAtMostOne (\(Joined (a,b)) -> ixFunList a <> ixFunList b)
 
 -- | Perform an inner join between two tables using a specific index. The
 -- expression @'innerJoinUsing' s1 s2 (Proxy :: Proxy t)@ is similar in purpose
