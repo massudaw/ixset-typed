@@ -115,8 +115,9 @@ module Data.IxSet.Typed
      -- ** Declaring indices
      Ix(),
      Indexed(..),
+     ixFunList,
      ReturnAtMostOne(..),
-     IxFunResult(..),
+     IxFun(..),
      MkEmptyIxList(),
 
      -- * Changes to set
@@ -426,15 +427,17 @@ type family MaybeOrList (a :: ReturnAtMostOne) :: * -> * where
   MaybeOrList 'AtMostOne = Maybe
   MaybeOrList 'NotNecessarilyAtMostOne = []
 
-data IxFunResult a ix where
-  One :: (DoesIxFunReturnAtMostOne a ix ~ 'AtMostOne) => (a -> Maybe ix) -> IxFunResult a ix
-  More :: (DoesIxFunReturnAtMostOne a ix ~ 'NotNecessarilyAtMostOne) => (a -> [ix]) -> IxFunResult a ix
+-- | A GADT to wrap the index extraction function. The function has a different
+-- type depending on the result of 'DoesIxFunReturnAtMostOne'.
+data IxFun a ix where
+  One :: (DoesIxFunReturnAtMostOne a ix ~ 'AtMostOne) => (a -> Maybe ix) -> IxFun a ix
+  More :: (DoesIxFunReturnAtMostOne a ix ~ 'NotNecessarilyAtMostOne) => (a -> [ix]) -> IxFun a ix
 
 -- | An 'Indexed' class asserts that it is possible to extract indices of type
 -- @ix@ from a type @a@. Provided function should return a list of indices where
 -- the value should be found. There are no predefined instances for 'Indexed'.
 class ReflectIxFunAnnotation (DoesIxFunReturnAtMostOne a ix) => Indexed a ix where
-  ixFun :: IxFunResult a ix
+  ixFun :: IxFun a ix
 
   type DoesIxFunReturnAtMostOne a ix :: ReturnAtMostOne
 
@@ -503,26 +506,33 @@ insertList xs (IxSet a indexes) = IxSet (List.foldl' (\ b x -> Set.insert x b) a
 --
 -- Slightly rewritten comment from original version regarding dss / index':
 --
--- We try to be really clever here. The partialindex is a Map of Sets
--- from original index. We want to reuse it as much as possible. If there
--- was a guarantee that each element is present at at most one key we
--- could reuse originalindex as it is. But there can be more, so we need to
--- add remaining ones (in updateh). Anyway we try to reuse old structure and
--- keep new allocations low as much as possible.
+-- We try to be really clever here. The partialindex is a Map of Sets from
+-- original index. We want to reuse it as much as possible. If there was a
+-- guarantee that each element is present at at most one key we could reuse
+-- originalindex as it is. But there may be more, and the user will tell inform
+-- us of whether this is the case through 'DoesIxFunReturnAtMostOne'. Depending
+-- on the result, we either need to add remaining ones (in updatehFull), or just
+-- reuse it. Anyway we try to reuse old structure and keep new allocations low
+-- as much as possible.
 fromMapOfSets :: forall ixs ix a. (Indexable ixs a, IsIndexOf ix ixs)
               => Map ix (Set a) -> IxSet ixs a
 fromMapOfSets partialindex =
-    IxSet a (mapAt (case reflectAnnotation (Proxy :: Proxy (DoesIxFunReturnAtMostOne a ix)) of AtMostOne -> updatehSimple; _ -> updateh) updatet mkEmptyIxList)
+    IxSet a (mapAt updateh updatet mkEmptyIxList)
   where
     a :: Set a
     a = Set.unions (Map.elems partialindex)
 
+    -- Update function for the index corresponding to partialindex.
+    updateh :: Indexed a ix => Ix ix a -> Ix ix a
+    updateh = case reflectAnnotation (Proxy :: Proxy (DoesIxFunReturnAtMostOne a ix)) of
+      AtMostOne -> updatehSimple
+      NotNecessarilyAtMostOne -> updatehFull
+
     updatehSimple :: Ix ix a -> Ix ix a
     updatehSimple (Ix _) = Ix partialindex
 
-    -- Update function for the index corresponding to partialindex.
-    updateh :: Indexed a ix => Ix ix a -> Ix ix a
-    updateh (Ix _) = Ix ix
+    updatehFull :: Indexed a ix => Ix ix a -> Ix ix a
+    updatehFull (Ix _) = Ix ix
       where
         dss :: [(ix, a)]
         dss = [(k, x) | x <- Set.toList a, k <- ixFunList x, not (Map.member k partialindex)]
@@ -531,6 +541,7 @@ fromMapOfSets partialindex =
         ix = Ix.insertList dss partialindex
 
     -- Update function for all other indices.
+    -- Here we essentially rebuild everything.
     updatet :: forall ix'. (Indexed a ix', Ord ix') => Ix ix' a -> Ix ix' a
     updatet (Ix _) = Ix ix
       where
