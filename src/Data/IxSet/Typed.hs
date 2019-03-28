@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -188,6 +189,7 @@ where
 
 import Prelude hiding (filter, null)
 
+import Control.Applicative (Applicative (..))
 import Control.Arrow (first, second)
 import Control.DeepSeq
 import Data.Coerce
@@ -421,6 +423,14 @@ instance MkEmptyIxList ixs => MkEmptyIxList (ix ': ixs) where
 data IxFun a ix
   = AtMostOne (a -> Maybe ix)
   | NotNecessarilyAtMostOne (a -> [ix])
+  deriving Functor
+
+instance Applicative (IxFun a) where
+  pure ix = AtMostOne (const (Just ix))
+  liftA2 f (AtMostOne fa) (AtMostOne fb) = AtMostOne ((liftA2 . liftA2) f fa fb)
+  liftA2 f (NotNecessarilyAtMostOne fa) (AtMostOne fb) = NotNecessarilyAtMostOne ((liftA2 . liftA2) f fa (maybeToList . fb))
+  liftA2 f (AtMostOne fa) (NotNecessarilyAtMostOne fb) = NotNecessarilyAtMostOne ((liftA2 . liftA2) f (maybeToList . fa) fb)
+  liftA2 f (NotNecessarilyAtMostOne fa) (NotNecessarilyAtMostOne fb) = NotNecessarilyAtMostOne ((liftA2 . liftA2) f fa fb)
 
 -- | An 'Indexed' class asserts that it is possible to extract indices of type
 -- @ix@ from a type @a@. Provided function should return a list of indices where
